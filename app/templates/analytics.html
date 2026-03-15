@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% block title %}Analytics - Coffee Data{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Analytics</h1>
+</div>
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="value">{{ summary.total_brews }}</div>
+        <div class="label">Total Brews</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ summary.average_score or "—" }}</div>
+        <div class="label">Avg Score</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ summary.top_roaster or "—" }}</div>
+        <div class="label">Top Roaster</div>
+    </div>
+    {% if summary.highest_rated_bean %}
+    <div class="stat-card">
+        <div class="value">{{ summary.highest_rated_bean.name }}</div>
+        <div class="label">Highest Rated ({{ summary.highest_rated_bean.avg_score }})</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="chart-grid">
+    <div class="card">
+        <h2>Score Trends</h2>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 100px;">
+                <label>Group By</label>
+                <select id="trend-group" onchange="loadTrends()">
+                    <option value="day">Daily</option>
+                    <option value="week">Weekly</option>
+                    <option value="month">Monthly</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Bean</label>
+                <select id="trend-bean" onchange="loadTrends()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Grinder</label>
+                <select id="trend-grinder" onchange="loadTrends()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Method</label>
+                <div class="temp-toggle" id="trend-method-toggle">
+                    <button type="button" data-method="Pour Over" class="active" onclick="setTrendMethod(this)">Pour Over</button>
+                    <button type="button" data-method="Espresso" onclick="setTrendMethod(this)">Espresso</button>
+                </div>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="trendsChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Brew Method Distribution</h2>
+        <div class="chart-container">
+            <canvas id="distributionChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Correlations</h2>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>X Axis</label>
+                <select id="corr-x" onchange="loadCorrelations()">
+                    <option value="grind_setting">Grind Setting</option>
+                    <option value="days_since_roast">Days Since Roast</option>
+                    <option value="bean_amount_grams">Bean Amount</option>
+                    <option value="water_amount_ml">Water Amount</option>
+                    <option value="water_temp_f">Water Temp (°F)</option>
+                    <option value="brew_time_seconds">Brew Time</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Y Axis</label>
+                <select id="corr-y" onchange="loadCorrelations()">
+                    <option value="overall_score">Overall Score</option>
+                    <option value="bitterness">Bitterness</option>
+                    <option value="acidity">Acidity</option>
+                    <option value="sweetness">Sweetness</option>
+                    <option value="body">Body</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Bean</label>
+                <select id="corr-bean" onchange="loadCorrelations()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Grinder</label>
+                <select id="corr-grinder" onchange="loadCorrelations()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+                <label>Method</label>
+                <div class="temp-toggle" id="corr-method-toggle">
+                    <button type="button" data-method="Pour Over" class="active" onclick="setCorrMethod(this)">Pour Over</button>
+                    <button type="button" data-method="Espresso" onclick="setCorrMethod(this)">Espresso</button>
+                </div>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="correlationChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Roaster Distribution</h2>
+        <div class="chart-container">
+            <canvas id="roasterChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2>Bean Inventory: Pour Over vs Espresso Trade-off</h2>
+        <p id="lp-subtitle" style="color: var(--text-muted, #888); margin-bottom: 1rem; font-size: 0.9rem;">
+            Linear programming optimal allocation — Pour Over uses <strong>25g</strong>, Espresso uses <strong>18g</strong> per cup.
+        </p>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: flex-end;">
+            <div class="form-group" style="flex: 1; margin: 0; min-width: 140px; max-width: 260px;">
+                <label>Bean</label>
+                <select id="lp-bean-filter" onchange="loadLP()">
+                    <option value="">All Beans</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 100px; max-width: 130px;">
+                <label>Pour Over (g)</label>
+                <input type="number" id="lp-po-grams" value="25" min="1" step="1" onchange="loadLP()">
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 100px; max-width: 130px;">
+                <label>Espresso (g)</label>
+                <input type="number" id="lp-esp-grams" value="18" min="1" step="1" onchange="loadLP()">
+            </div>
+        </div>
+        <div id="lp-summary" style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;"></div>
+        <div class="chart-container">
+            <canvas id="lpChart"></canvas>
+        </div>
+        <div id="lp-recommendation" style="margin-top:1rem; padding:0.75rem 1rem; background:rgba(107,68,35,0.08); border-left:3px solid #6b4423; border-radius:4px; font-size:0.9rem;"></div>
+        <div id="lp-breakdown" style="margin-top:1rem;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chart.umd.min.js"></script>
+<script>
+const COLORS = [
+    '#6b4423', '#d4a574', '#8b5e3c', '#a67c52', '#c49a6c',
+    '#4a2c0f', '#e6c9a8', '#9e7b5b', '#b8860b', '#deb887'
+];
+
+let trendsChart, distChart, corrChart, roasterChart;
+
+async function loadTrends() {
+    const groupBy = document.getElementById('trend-group').value;
+    const params = new URLSearchParams({ group_by: groupBy });
+    const bean = document.getElementById('trend-bean')?.value;
+    const grinder = document.getElementById('trend-grinder')?.value;
+    const methodBtn = document.querySelector('#trend-method-toggle button.active');
+    const method = methodBtn ? methodBtn.dataset.method : 'Pour Over';
+    if (bean) params.set('bean_name', bean);
+    if (grinder) params.set('grinder', grinder);
+    params.set('brew_method', method);
+    const resp = await fetch(`/api/v1/analytics/trends?${params}`);
+    const data = await resp.json();
+    if (trendsChart) trendsChart.destroy();
+    trendsChart = new Chart(document.getElementById('trendsChart'), {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.period),
+            datasets: [{
+                label: 'Avg Score',
+                data: data.map(d => d.avg_score),
+                borderColor: '#6b4423',
+                backgroundColor: 'rgba(107,68,35,0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 10 } } }
+    });
+}
+
+function setTrendMethod(btn) {
+    document.querySelectorAll('#trend-method-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadTrends();
+}
+
+async function loadDistribution() {
+    const resp = await fetch('/api/v1/analytics/distributions?field=brew_method');
+    const data = await resp.json();
+    if (distChart) distChart.destroy();
+    distChart = new Chart(document.getElementById('distributionChart'), {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.label),
+            datasets: [{ data: data.map(d => d.count), backgroundColor: COLORS }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+}
+
+function populateSelect(selectEl, items) {
+    items.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        selectEl.appendChild(opt);
+    });
+}
+
+async function loadFilterOptions() {
+    try {
+        const resp = await fetch('/api/v1/analytics/filter-options');
+        const data = await resp.json();
+        populateSelect(document.getElementById('corr-bean'), data.bean_names);
+        populateSelect(document.getElementById('corr-grinder'), data.grinders);
+        populateSelect(document.getElementById('trend-bean'), data.bean_names);
+        populateSelect(document.getElementById('trend-grinder'), data.grinders);
+    } catch (e) {
+        console.error('Failed to load filter options:', e);
+    }
+}
+
+function setCorrMethod(btn) {
+    document.querySelectorAll('#corr-method-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadCorrelations();
+}
+
+async function loadCorrelations() {
+    try {
+        const x = document.getElementById('corr-x').value;
+        const y = document.getElementById('corr-y').value;
+        const bean = document.getElementById('corr-bean').value;
+        const grinder = document.getElementById('corr-grinder').value;
+        const methodBtn = document.querySelector('#corr-method-toggle button.active');
+        const method = methodBtn ? methodBtn.dataset.method : 'Pour Over';
+        let url = `/api/v1/analytics/correlations?x=${x}&y=${y}`;
+        if (bean) url += `&bean_name=${encodeURIComponent(bean)}`;
+        if (grinder) url += `&grinder=${encodeURIComponent(grinder)}`;
+        url += `&brew_method=${encodeURIComponent(method)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) { console.error('Correlation fetch failed:', resp.status); return; }
+        const data = await resp.json();
+        if (corrChart) corrChart.destroy();
+        const xLabel = document.getElementById('corr-x').selectedOptions[0].text;
+        const yLabel = document.getElementById('corr-y').selectedOptions[0].text;
+
+        // Aggregate duplicate x,y pairs and track count
+        const countMap = {};
+        data.forEach(d => {
+            const key = `${d.x}|${d.y}`;
+            countMap[key] = (countMap[key] || 0) + 1;
+        });
+        const aggregated = Object.entries(countMap).map(([key, count]) => {
+            const [xv, yv] = key.split('|').map(Number);
+            return { x: xv, y: yv, count };
+        });
+        const minR = 6, maxR = 20;
+        const maxCount = Math.max(...aggregated.map(d => d.count), 1);
+        const radii = aggregated.map(d => maxCount === 1 ? minR : minR + (d.count - 1) / (maxCount - 1) * (maxR - minR));
+
+        corrChart = new Chart(document.getElementById('correlationChart'), {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: `${xLabel} vs ${yLabel}`,
+                    data: aggregated,
+                    backgroundColor: 'rgba(107,68,35,0.6)',
+                    pointRadius: radii,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: xLabel } },
+                    y: { title: { display: true, text: yLabel } }
+                },
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const pt = aggregated[ctx.dataIndex];
+                                const lines = [`${xLabel}: ${pt.x}, ${yLabel}: ${pt.y}`];
+                                if (pt.count > 1) lines.push(`Used ${pt.count} times`);
+                                return lines;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        console.error('Failed to load correlations:', e);
+    }
+}
+
+async function loadRoasterDist() {
+    const resp = await fetch('/api/v1/analytics/distributions?field=roaster');
+    const data = await resp.json();
+    if (roasterChart) roasterChart.destroy();
+    roasterChart = new Chart(document.getElementById('roasterChart'), {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.label),
+            datasets: [{ label: 'Brews', data: data.map(d => d.count), backgroundColor: '#6b4423' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+    });
+}
+
+let lpChart;
+
+// Inline Chart.js plugin: draws text labels next to special points
+const pointLabelPlugin = {
+    id: 'pointLabelPlugin',
+    afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, i) => {
+            if (!dataset._pointLabels) return;
+            const meta = chart.getDatasetMeta(i);
+            meta.data.forEach((pt, j) => {
+                const lines = dataset._pointLabels[j];
+                if (!lines) return;
+                ctx.save();
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillStyle = '#333';
+                lines.forEach((line, k) => {
+                    ctx.fillText(line, pt.x + 10, pt.y - 6 + k * 14);
+                });
+                ctx.restore();
+            });
+        });
+    }
+};
+
+async function populateLPBeans() {
+    const resp = await fetch('/api/v1/shelf/beans');
+    const beans = await resp.json();
+    const sel = document.getElementById('lp-bean-filter');
+    while (sel.options.length > 1) sel.remove(1);
+    beans.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = b;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadLP() {
+    const beanFilter = document.getElementById('lp-bean-filter')?.value || '';
+    const poGrams = parseFloat(document.getElementById('lp-po-grams')?.value) || 25;
+    const espGrams = parseFloat(document.getElementById('lp-esp-grams')?.value) || 18;
+    const params = new URLSearchParams();
+    if (beanFilter) params.set('bean_name', beanFilter);
+    params.set('pour_over_grams', poGrams);
+    params.set('espresso_grams', espGrams);
+    const url = `/api/v1/shelf/lp?${params}`;
+    const resp = await fetch(url);
+    const d = await resp.json();
+    const W = d.total_remaining_grams;
+    const po_g = d.pour_over_grams || poGrams;
+    const esp_g = d.espresso_grams || espGrams;
+
+    // Update subtitle with current recipe
+    document.getElementById('lp-subtitle').innerHTML =
+        `Linear programming optimal allocation — Pour Over uses <strong>${po_g}g</strong>, Espresso uses <strong>${esp_g}g</strong> per cup.`;
+
+    // Key scenario leftovers
+    const espLeft = +(W - d.optimal_espressos * esp_g).toFixed(1);
+    const poLeft  = +(W - d.max_pour_overs * po_g).toFixed(1);
+
+    // Summary: remaining + two key scenarios
+    document.getElementById('lp-summary').innerHTML = W > 0 ? `
+        <div class="stat-card" style="flex:1; min-width:110px; padding:0.5rem 1rem;">
+            <div class="value" style="font-size:1.4rem;">${W}g</div>
+            <div class="label">Beans Remaining</div>
+        </div>
+        <div class="stat-card" style="flex:1; min-width:130px; padding:0.5rem 1rem; border-left:3px solid #6b4423;">
+            <div class="value" style="font-size:1.4rem;">★ ${d.optimal_espressos} cups</div>
+            <div class="label">All Espresso &mdash; ${espLeft}g left</div>
+        </div>
+        <div class="stat-card" style="flex:1; min-width:130px; padding:0.5rem 1rem;">
+            <div class="value" style="font-size:1.4rem;">${d.max_pour_overs} cups</div>
+            <div class="label">All Pour Over &mdash; ${poLeft}g left</div>
+        </div>
+    ` : `
+        <div class="stat-card" style="flex:1; min-width:110px; padding:0.5rem 1rem;">
+            <div class="value" style="font-size:1.4rem;">0g</div>
+            <div class="label">Beans Remaining</div>
+        </div>
+    `;
+
+    // Recommendation
+    document.getElementById('lp-recommendation').innerHTML = W > 0
+        ? `<strong>Optimal (max cups):</strong> ${d.optimal_espressos} espressos uses ${(d.optimal_espressos*esp_g).toFixed(0)}g, leaving <strong>${espLeft}g</strong>.
+           &nbsp;|&nbsp; All pour over: ${d.max_pour_overs} cups, <strong>${poLeft}g</strong> left.
+           Hover any dot on the chart to see the exact trade-off for that allocation.`
+        : `<strong>No inventory tracked${beanFilter ? ` for &ldquo;${beanFilter}&rdquo;` : ''}.</strong>
+           Visit <a href="/shelf">On the Shelf</a> to enter your bean inventory.`;
+
+    // Per-bean breakdown
+    if (d.breakdown && d.breakdown.length) {
+        document.getElementById('lp-breakdown').innerHTML = `
+            <details>
+                <summary style="cursor:pointer; font-weight:600; color:#6b4423;">Bean Breakdown</summary>
+                <table class="brew-table" style="margin-top:0.5rem;">
+                    <thead><tr><th>Bean</th><th>Roaster</th><th>Remaining</th><th>Max Espressos</th><th>Leftover</th><th>Max Pour Overs</th><th>Leftover</th></tr></thead>
+                    <tbody>
+                        ${d.breakdown.map(b => {
+                            const r = b.remaining_grams;
+                            const maxE = r != null ? Math.floor(r / esp_g) : null;
+                            const maxP = r != null ? Math.floor(r / po_g) : null;
+                            return `<tr>
+                                <td>${b.bean_name}</td>
+                                <td>${b.roaster || '—'}</td>
+                                <td>${r != null ? r + 'g' : '—'}</td>
+                                <td>${maxE != null ? maxE : '—'}</td>
+                                <td>${maxE != null ? (r - maxE*esp_g).toFixed(1)+'g' : '—'}</td>
+                                <td>${maxP != null ? maxP : '—'}</td>
+                                <td>${maxP != null ? (r - maxP*po_g).toFixed(1)+'g' : '—'}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </details>`;
+    } else {
+        document.getElementById('lp-breakdown').innerHTML = '';
+    }
+
+    if (lpChart) lpChart.destroy();
+    if (W <= 0) return;
+
+    const tradeoffLine = d.constraint_line.map(p => ({ x: p.x, y: p.y }));
+    const pts = d.integer_points;  // [{pour_overs, espressos, total_cups, beans_used, leftover}]
+
+    // Visual properties per point — key corners get distinct styles
+    const isOptEsp  = p => p.pour_overs === 0;
+    const isOptPour = p => p.espressos === 0;
+    const ptColors  = pts.map(p => isOptEsp(p) ? '#6b4423' : isOptPour(p) ? '#d4a574' : '#a67c52');
+    const ptRadii   = pts.map(p => (isOptEsp(p) || isOptPour(p)) ? 11 : 7);
+    const ptStyles  = pts.map(p => isOptEsp(p) ? 'star' : isOptPour(p) ? 'triangle' : 'circle');
+
+    // Text labels only on the two corner points
+    const ptLabels  = pts.map(p => {
+        if (isOptEsp(p))  return [`★ ${p.espressos} esp`, `${p.leftover}g left`];
+        if (isOptPour(p)) return [`${p.pour_overs} po`, `${p.leftover}g left`];
+        return null;
+    });
+
+    lpChart = new Chart(document.getElementById('lpChart'), {
+        type: 'scatter',
+        plugins: [pointLabelPlugin],
+        data: {
+            datasets: [
+                {
+                    label: `${po_g}x + ${esp_g}y = ${W}g (boundary)`,
+                    data: tradeoffLine,
+                    type: 'line',
+                    borderColor: '#6b4423',
+                    backgroundColor: 'rgba(107,68,35,0.07)',
+                    borderWidth: 1.5,
+                    borderDash: [5, 3],
+                    pointRadius: 0,
+                    fill: 'origin',
+                    tension: 0,
+                    order: 3,
+                },
+                {
+                    label: 'Efficient allocations',
+                    data: pts.map(p => ({ x: p.pour_overs, y: p.espressos })),
+                    backgroundColor: ptColors,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1.5,
+                    pointRadius: ptRadii,
+                    pointStyle: ptStyles,
+                    order: 1,
+                    _pointLabels: ptLabels,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    title: { display: true, text: 'Pour Overs (cups)' },
+                    min: 0,
+                    ticks: { stepSize: 1, precision: 0 },
+                    suggestedMax: Math.ceil(d.x_intercept * 1.2) + 1,
+                },
+                y: {
+                    title: { display: true, text: 'Espressos (cups)' },
+                    min: 0,
+                    ticks: { stepSize: 1, precision: 0 },
+                    suggestedMax: Math.ceil(d.y_intercept * 1.15) + 1,
+                }
+            },
+            plugins: {
+                legend: { display: true },
+                tooltip: {
+                    callbacks: {
+                        title: () => '',
+                        label: (ctx) => {
+                            if (ctx.datasetIndex === 0) return null; // hide constraint line tooltip
+                            const pt = pts[ctx.dataIndex];
+                            const po = pt.pour_overs;
+                            const esp = pt.espressos;
+                            return [
+                                `${po} pour over${po !== 1 ? 's' : ''} + ${esp} espresso${esp !== 1 ? 's' : ''}`,
+                                `Total cups: ${pt.total_cups}`,
+                                `Beans used: ${pt.beans_used}g`,
+                                `Beans left over: ${pt.leftover}g`,
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load all on page ready
+loadDistribution();
+loadRoasterDist();
+populateLPBeans().then(() => loadLP());
+loadFilterOptions().then(() => { loadTrends(); loadCorrelations(); });
+</script>
+{% endblock %}
