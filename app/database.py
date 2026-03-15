@@ -3,11 +3,19 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
 
-connect_args = {}
-if settings.database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+database_url = settings.database_url
 
-engine = create_engine(settings.database_url, connect_args=connect_args)
+# Neon and some providers use "postgres://" which SQLAlchemy doesn't accept
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+connect_args = {}
+if database_url.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+elif database_url.startswith("postgresql"):
+    connect_args["sslmode"] = "require"
+
+engine = create_engine(database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
